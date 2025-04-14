@@ -1,0 +1,12 @@
+# 仮想環境
+venv/
+
+# azure functions
+__azurite*
+AzuriteConfig
+__blobstorage__/
+__queuestorage__/
+local.settings.json
+
+# Python実行
+__pycache*/

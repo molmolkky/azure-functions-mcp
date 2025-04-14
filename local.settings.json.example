@@ -1,0 +1,15 @@
+{
+    "IsEncrypted": false,
+    "Values": {
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "COSMOS_ENDPOINT": "https://<your_cosmos_account_name>.documents.azure.com:443/",
+        "COSMOS_KEY": "your_access_key",
+        "COSMOS_DATABASE_NAME": "your_database_name",
+        "COSMOS_CONTAINER_NAME": "your_container_name",
+        "AZURE_OPENAI_ENDPOINT": "https://<your_azure_openai_account_name>.openai.azure.com/",
+        "AZURE_OPENAI_API_KEY": "your_api_key",
+        "AZURE_OPENAI_DEPLOYMENT_NAME": "your_deployment_name",
+        "AZURE_OPENAI_API_VERSION": "2025-01-01-preview"
+    }
+}
