@@ -36,6 +36,7 @@ aoai_client = AzureOpenAI(
 )
 def query_cosmosdb(context) -> str:
     try:
+        logging.info("MCPToll Called! query_cosmosdb")
         # 自然言語クエリを取得
         content = json.loads(context)
         natural_language_query = content["arguments"]["query"]
@@ -94,3 +95,22 @@ def query_cosmosdb(context) -> str:
         logging.error(f"エラーが発生しました: {e}")
         return json.dumps({"error": str(e)}, ensure_ascii=False)
 
+@app.generic_trigger(
+    arg_name="context",
+    type="mcpToolTrigger",
+    toolName="hello_mcp",
+    description="国で使用している言語を取得します。",
+    toolProperties='[{"propertyName": "country", "propertyType": "string", "description": "国名を英語で入れてください"}]',
+)
+def judge_langage(context) -> str:
+    logging.info("MCPTool called! judge_langage")
+    content = json.loads(context)
+    country_name = content["arguments"]["country"]
+    logging.info(f"content: {content}")
+
+    if country_name.lower() == "japan":
+        return f"{country_name}は日本語です"
+    elif country_name.lower() == "china":
+        return f"{country_name}は中国語です"
+    else:
+        return f"{country_name}は日本語でも中国語でもない別の言語です"
