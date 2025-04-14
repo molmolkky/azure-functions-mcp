@@ -1,11 +1,11 @@
 import azure.functions as func
-from azure.cosmos import CosmosClient
 from openai import AzureOpenAI
 import logging
 import json
 import os
 
 from config import cosmos_client
+from utils import simplify_cosmos_item
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -42,45 +42,19 @@ def query_cosmosdb(context) -> str:
 
         logging.info(f"自然言語クエリ: {natural_language_query}")
 
+        # サンプルアイテムを取得
+        database = cosmos_client.get_database_client(COSMOS_DATABASE_NAME)
+        container = database.get_container_client(COSMOS_CONTAINER_NAME)
+        sample_items = list(container.query_items(query="SELECT TOP 1 * FROM c", enable_cross_partition_query=True))
+
+        sample_item = simplify_cosmos_item(sample_items[0])
+
         # 自然言語を SQL に変換（OpenAI API を使用する例）
         system_prompt = """あなたは、ユーザーの意図を汲んで欲しいデータを提示するための、CosmosDBのSQL生成のスペシャリストです。ユーザーの質問をCosmosDBのSQLに変換してください。'
-        コンテナーのデータは以下のようなフィールドを持っています: 
-
-        ## フィールド説明
-            - id (str): 一意キー
-            - city (str): 都道府県＋市区町村（パーティションキー）
-            - types (List[str]): 飲食店のカテゴリリスト
-            - nationalPhoneNumber (str): 電話番号
-            - formattedAddress (str): 住所
-            - rating (float): 評価
-            - displayName: 表示名 
-                - text (str): 店名
-                - languageCode (str): 言語を示すISO2桁コード  
+        コンテナーのデータは以下のようなアイテムが格納されています: 
         
         ## アイテム例
-        {{
-            "id": ,
-            "city": "東京都渋谷区",
-            "types": [
-                "italian_restaurant",
-                "bar_and_grill",
-                "vegetarian_restaurant",
-                "steak_house",
-                "meal_takeaway",
-                "restaurant",
-                "food",
-                "bar",
-                "point_of_interest",
-                "establishment"
-            ],
-            "nationalPhoneNumber": "03-6434-7155",
-            "formattedAddress": "日本、〒107-0061 東京都港区北青山３丁目５−４３ 表参道LAB 1F",
-            "rating": 4.4,
-            "displayName": {
-                "text": "TRATTORIA 庭",
-                "languageCode": "ja"
-            }
-        }}
+        <<sample_item>>
 
         ## 出力形式
         以下JSON形式に従って出力すること:
@@ -92,7 +66,7 @@ def query_cosmosdb(context) -> str:
         ## 注意事項
         - 安易に SELECT * FROM c を使用しないこと。
         """
-        messages = [{"role": "system", "content": system_prompt},
+        messages = [{"role": "system", "content": system_prompt.replace("<<sample_item>>", str(sample_item))},
                     {"role": "user", "content": natural_language_query}]
         logging.info("AOAI Calling...")
         response = aoai_client.chat.completions.create(
@@ -109,10 +83,14 @@ def query_cosmosdb(context) -> str:
         # Cosmos DB に接続してクエリを実行
         database = cosmos_client.get_database_client(COSMOS_DATABASE_NAME)
         container = database.get_container_client(COSMOS_CONTAINER_NAME)
-        items = list(container.query_items(query=sql_query, enable_cross_partition_query=True))
+        items = []
+        for item in container.query_items(query=sql_query, enable_cross_partition_query=True):
+            simple_item = simplify_cosmos_item(item)
+            items.append(simple_item)
         logging.info(f"GET items from CosmosDB: {len(items)} items.")
         return json.dumps(items, ensure_ascii=False)
 
     except Exception as e:
         logging.error(f"エラーが発生しました: {e}")
         return json.dumps({"error": str(e)}, ensure_ascii=False)
+
