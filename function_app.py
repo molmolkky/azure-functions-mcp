@@ -32,7 +32,7 @@ aoai_client = AzureOpenAI(
 
 # MCPServerの環境変数を取得
 MCPSERVER_FUNC_NAME = os.environ.get("MCPSERVER_FUNC_NAME")
-MCPSERVER_FUNC_KEY = os.environ.get("MCPSERVER_FUNC_KEY")
+MCPSERVER_FUNC_KEY = os.environ.get("MCPSERVER_FUNC_KEY", "")
 
 
 @app.generic_trigger(
@@ -132,7 +132,9 @@ async def mcp_keep_alive(myTimer: func.TimerRequest) -> None:
         async with AsyncExitStack() as stack:
             # タイムアウト設定を追加
             stdio, write = await stack.enter_async_context(
-                sse_client(f"{MCPSERVER_FUNC_NAME}/runtime/webhooks/mcp/sse?code={MCPSERVER_FUNC_KEY}", timeout=30)
+                sse_client(f"{MCPSERVER_FUNC_NAME}/runtime/webhooks/mcp/sse", 
+                           headers={"x-functions-key": MCPSERVER_FUNC_KEY},
+                           timeout=30)
             )
             session = await stack.enter_async_context(ClientSession(stdio, write))
             await session.initialize()
