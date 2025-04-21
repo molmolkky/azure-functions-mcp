@@ -31,7 +31,11 @@ aoai_client = AzureOpenAI(
 )
 
 # MCPServerの環境変数を取得
-MCPSERVER_FUNC_NAME = os.environ.get("MCPSERVER_FUNC_NAME")
+HOSTNAME = os.environ.get("WEBSITE_HOSTNAME", "localhost:7071")
+if HOSTNAME == "localhost:7071":
+    MCPSERVER_FUNC_NAME = f"http://{HOSTNAME}"
+else:
+    MCPSERVER_FUNC_NAME = f"https://{HOSTNAME}"
 MCPSERVER_FUNC_KEY = os.environ.get("MCPSERVER_FUNC_KEY", "")
 
 
@@ -127,14 +131,14 @@ def judge_langage(context) -> str:
 @app.timer_trigger(arg_name="myTimer", schedule="*/15 * * * * *", run_on_startup=False, use_monitor=False)
 async def mcp_keep_alive(myTimer: func.TimerRequest) -> None:
     logging.info("mcp_keep_alive started.")
+    logging.info(f"MCPSERVER_FUNC_NAME: {MCPSERVER_FUNC_NAME}")
+    logging.info(f"MCPSERVER_FUNC_KEY: {MCPSERVER_FUNC_KEY}")
 
     try:
         async with AsyncExitStack() as stack:
             # タイムアウト設定を追加
             stdio, write = await stack.enter_async_context(
-                sse_client(f"{MCPSERVER_FUNC_NAME}/runtime/webhooks/mcp/sse", 
-                           headers={"x-functions-key": MCPSERVER_FUNC_KEY},
-                           timeout=30)
+                sse_client(f"{MCPSERVER_FUNC_NAME}/runtime/webhooks/mcp/sse?code={MCPSERVER_FUNC_KEY}", timeout=30)
             )
             session = await stack.enter_async_context(ClientSession(stdio, write))
             await session.initialize()
