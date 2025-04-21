@@ -1,9 +1,12 @@
 import azure.functions as func
 from openai import AzureOpenAI
+from contextlib import AsyncExitStack
 import logging
 import json
 import os
 
+from mcp import ClientSession
+from mcp.client.sse import sse_client
 from config import cosmos_client
 from utils import simplify_cosmos_item
 
@@ -26,6 +29,11 @@ aoai_client = AzureOpenAI(
     api_key=AZURE_OPENAI_API_KEY,
     api_version=AZURE_OPENAI_API_VERSION
 )
+
+# MCPServerの環境変数を取得
+MCPSERVER_FUNC_NAME = os.environ.get("MCPSERVER_FUNC_NAME")
+MCPSERVER_FUNC_KEY = os.environ.get("MCPSERVER_FUNC_KEY", "")
+
 
 @app.generic_trigger(
     arg_name="context",
@@ -98,8 +106,8 @@ def query_cosmosdb(context) -> str:
 @app.generic_trigger(
     arg_name="context",
     type="mcpToolTrigger",
-    toolName="hello_mcp",
-    description="国で使用している言語を取得します。",
+    toolName="judge_langage",
+    description="公用語を取得します。",
     toolProperties='[{"propertyName": "country", "propertyType": "string", "description": "国名を英語で入れてください"}]',
 )
 def judge_langage(context) -> str:
@@ -114,3 +122,23 @@ def judge_langage(context) -> str:
         return f"{country_name}は中国語です"
     else:
         return f"{country_name}は日本語でも中国語でもない別の言語です"
+
+@app.function_name(name="mcp_keep_alive")
+@app.timer_trigger(arg_name="myTimer", schedule="15/* * * * * *", run_on_startup=False, use_monitor=False)
+async def mcp_keep_alive(myTimer: func.TimerRequest) -> None:
+    logging.info("mcp_keep_alive started.")
+
+    async with AsyncExitStack() as stack:
+        stdio, write = await stack.enter_async_context(sse_client(f"https://{MCPSERVER_FUNC_NAME}.azurewebsites.net/runtime/webhooks/mcp/sse?code={MCPSERVER_FUNC_KEY}"))
+        session = await stack.enter_async_context(ClientSession(stdio, write))
+        await session.initialize()
+
+        response = await session.list_tools()
+        available_tools = response.tools
+        logging.info(f"=====Available Tools: {available_tools}======")
+
+        tool_name = "judge_langage"
+        tool_args = {"country": "Japan"}
+        logging.info(f"Calling tool {tool_name} with args {tool_args}")
+        tool_result = await session.call_tool(tool_name, tool_args)
+        logging.info(f"Tool Result: {tool_result}")
