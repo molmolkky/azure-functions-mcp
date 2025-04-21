@@ -32,7 +32,7 @@ aoai_client = AzureOpenAI(
 
 # MCPServerの環境変数を取得
 MCPSERVER_FUNC_NAME = os.environ.get("MCPSERVER_FUNC_NAME")
-MCPSERVER_FUNC_KEY = os.environ.get("MCPSERVER_FUNC_KEY", "")
+MCPSERVER_FUNC_KEY = os.environ.get("MCPSERVER_FUNC_KEY")
 
 
 @app.generic_trigger(
@@ -124,21 +124,29 @@ def judge_langage(context) -> str:
         return f"{country_name}は日本語でも中国語でもない別の言語です"
 
 @app.function_name(name="mcp_keep_alive")
-@app.timer_trigger(arg_name="myTimer", schedule="15/* * * * * *", run_on_startup=False, use_monitor=False)
+@app.timer_trigger(arg_name="myTimer", schedule="*/15 * * * * *", run_on_startup=False, use_monitor=False)
 async def mcp_keep_alive(myTimer: func.TimerRequest) -> None:
     logging.info("mcp_keep_alive started.")
 
-    async with AsyncExitStack() as stack:
-        stdio, write = await stack.enter_async_context(sse_client(f"https://{MCPSERVER_FUNC_NAME}.azurewebsites.net/runtime/webhooks/mcp/sse?code={MCPSERVER_FUNC_KEY}"))
-        session = await stack.enter_async_context(ClientSession(stdio, write))
-        await session.initialize()
+    try:
+        async with AsyncExitStack() as stack:
+            # タイムアウト設定を追加
+            stdio, write = await stack.enter_async_context(
+                sse_client(f"{MCPSERVER_FUNC_NAME}/runtime/webhooks/mcp/sse?code={MCPSERVER_FUNC_KEY}", timeout=30)
+            )
+            session = await stack.enter_async_context(ClientSession(stdio, write))
+            await session.initialize()
 
-        response = await session.list_tools()
-        available_tools = response.tools
-        logging.info(f"=====Available Tools: {available_tools}======")
+            response = await session.list_tools()
+            available_tools = response.tools
+            logging.info(f"=====Available Tools: {available_tools}======")
 
-        tool_name = "judge_langage"
-        tool_args = {"country": "Japan"}
-        logging.info(f"Calling tool {tool_name} with args {tool_args}")
-        tool_result = await session.call_tool(tool_name, tool_args)
-        logging.info(f"Tool Result: {tool_result}")
+            tool_name = "judge_langage"
+            tool_args = {"country": "Japan"}
+            logging.info(f"Calling tool {tool_name} with args {tool_args}")
+            tool_result = await session.call_tool(tool_name, tool_args)
+            logging.info(f"Tool Result: {tool_result}")
+    except Exception as e:
+        logging.error(f"Error in MCP client: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
